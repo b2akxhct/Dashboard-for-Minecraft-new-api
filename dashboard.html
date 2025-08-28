@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Minecraft Gamerules & Players</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; }
+  #gamerules { margin-top: 20px; }
+  .gamerule { display: flex; align-items: center; margin: 5px 0; }
+  .gamerule label { width: 200px; font-weight: bold; }
+  .gamerule .controls { flex: 1; display: flex; justify-content: center; gap: 10px; }
+  input[type="number"] { width: 80px; }
+
+  /* Encadré player list en haut à droite */
+  #playerListContainer {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      width: 250px;
+      max-height: 400px;
+      border: 1px solid #000;
+      padding: 10px;
+      overflow-y: auto;
+      background: #f9f9f9;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+  }
+  #playerListContainer h2 { margin-top:0; font-size: 16px; }
+  .player { margin: 5px 0; }
+  .op { color: blue; font-weight: bold; margin-left: 5px; }
+</style>
+</head>
+<body>
+
+<h1>Minecraft Gamerules</h1>
+
+<div>
+  <label for="wsip">WebSocket IP :</label>
+  <input type="text" id="wsip" placeholder="ws://xxx.xxx.xxx.xxx:25585" style="width:250px;">
+  <button id="connectBtn">Connect</button>
+</div>
+
+<div id="status" style="margin-top:10px; color:green;"></div>
+<div id="gamerules">Chargement des gamerules...</div>
+
+<!-- Encadré Player List -->
+<div id="playerListContainer">
+  <h2>Joueurs connectés</h2>
+  <div id="players">Aucun joueur connecté</div>
+</div>
+
+<script>
+let ws;
+let players = [];
+let ops = [];
+
+/* --- Gamerules --- */
+function createGameruleElement(rule) {
+    const div = document.createElement('div');
+    div.className = 'gamerule';
+
+    const label = document.createElement('label');
+    label.textContent = rule.key;
+    div.appendChild(label);
+
+    const controlsDiv = document.createElement('div');
+    controlsDiv.className = 'controls';
+
+    if (rule.type === 'boolean') {
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = rule.value === 'true';
+        checkbox.onchange = () => updateGamerule(rule.key, checkbox.checked ? 'true' : 'false');
+        controlsDiv.appendChild(checkbox);
+    } else if (rule.type === 'integer') {
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        slider.min = '0';
+        slider.max = '10000';
+        slider.value = rule.value;
+        const numberInput = document.createElement('input');
+        numberInput.type = 'number';
+        numberInput.value = rule.value;
+
+        slider.oninput = () => { numberInput.value = slider.value; updateGamerule(rule.key, slider.value); };
+        numberInput.onchange = () => { slider.value = numberInput.value; updateGamerule(rule.key, numberInput.value); };
+
+        controlsDiv.appendChild(slider);
+        controlsDiv.appendChild(numberInput);
+    }
+
+    div.appendChild(controlsDiv);
+    return div;
+}
+
+function fetchGamerules() {
+    ws.send(JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method: "minecraft:gamerules", params: [] }));
+}
+
+function updateGamerule(key, value) {
+    ws.send(JSON.stringify({
+        jsonrpc: "2.0",
+        id: Date.now(),
+        method: "minecraft:gamerules/update",
+        params: [{ key: key, value: value }]
+    }));
+    setTimeout(fetchGamerules, 200);
+}
+
+/* --- Player List (encadré) --- */
+const playersDiv = document.getElementById("players");
+
+function updatePlayerDisplay() {
+    playersDiv.innerHTML = "";
+    if (players.length === 0) {
+        playersDiv.textContent = "Aucun joueur connecté";
+        return;
+    }
+    players.forEach(p => {
+        const div = document.createElement("div");
+        div.className = "player";
+        const isOp = ops.some(o => o.player.id === p.id);
+        div.innerHTML = `${p.name}${isOp ? '<span class="op"> ●</span>' : ''}`;
+        playersDiv.appendChild(div);
+    });
+}
+
+function fetchPlayers() {
+    ws.send(JSON.stringify({ jsonrpc:"2.0", id: Date.now(), method:"minecraft:players", params:[] }));
+    ws.send(JSON.stringify({ jsonrpc:"2.0", id: Date.now()+1, method:"minecraft:operators", params:[] }));
+}
+
+function handleNotification(data) {
+    switch(data.method) {
+        case "notification:players/joined":
+        case "notification:players/left":
+            fetchPlayers();
+            break;
+        case "notification:operators/added":
+            ops.push(data.params.player);
+            updatePlayerDisplay();
+            break;
+        case "notification:operators/removed":
+            ops = ops.filter(o => o.player.id !== data.params.player.player.id);
+            updatePlayerDisplay();
+            break;
+    }
+}
+
+/* --- Connexion WebSocket --- */
+document.getElementById('connectBtn').onclick = () => {
+    const ip = document.getElementById('wsip').value.trim();
+    if (!ip) return alert("Entrez une IP WebSocket !");
+    ws = new WebSocket(ip);
+
+    ws.onopen = () => {
+        document.getElementById('status').textContent = "✅ Connecté au serveur";
+        fetchGamerules();
+        fetchPlayers();
+    };
+
+    ws.onmessage = (msg) => {
+        const data = JSON.parse(msg.data);
+
+        // Affichage Gamerules
+        if(data.result && (Array.isArray(data.result.gamerules) || (Array.isArray(data.result) && data.result[0]?.key))) {
+            const container = document.getElementById('gamerules');
+            container.innerHTML = '';
+            const rules = data.result.gamerules || data.result;
+            rules.forEach(rule => container.appendChild(createGameruleElement(rule)));
+        }
+
+        // Résultat des joueurs
+        if(data.result && Array.isArray(data.result) && data.result[0]?.name) {
+            players = data.result;
+            updatePlayerDisplay();
+        }
+        if(data.result && Array.isArray(data.result) && data.result[0]?.player) {
+            ops = data.result;
+            updatePlayerDisplay();
+        }
+
+        // Notifications
+        if(data.method && data.params) handleNotification(data);
+    };
+
+    ws.onerror = () => { document.getElementById('status').textContent = "❌ Erreur de connexion"; };
+    ws.onclose = () => { document.getElementById('status').textContent = "❌ Déconnecté"; };
+};
+</script>
+</body>
+</html>
