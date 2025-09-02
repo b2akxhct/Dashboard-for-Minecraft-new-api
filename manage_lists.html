@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Gestion OP / Allowlist / Banlist — Minecraft</title>
+<style>
+  :root{--bg:#0f1720;--panel:#0b1220;--muted:#94a3b8;--accent:#3182ce;--accent-2:#2563eb;--card:#0b1225;--green:#10b981;--red:#ef4444;--amber:#f59e0b;--text:#e6eef8}
+  html,body{height:100%;margin:0;font-family:Inter,"Segoe UI",Arial,sans-serif;background:linear-gradient(180deg,#071019 0%,var(--bg) 100%);color:var(--text)}
+  .container{max-width:1100px;margin:28px auto;padding:28px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));border-radius:12px;box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+  h1{margin:0 0 18px 0;font-size:32px}
+  #top{display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+  label{color:var(--muted);min-width:90px}
+  input[type="text"]{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text);padding:10px 12px;border-radius:8px;min-width:220px}
+  button{background:var(--accent);color:#fff;padding:8px 12px;border-radius:8px;border:none;cursor:pointer}
+  button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--text)}
+  button.danger{background:var(--red)}
+  button:disabled{opacity:0.5;cursor:not-allowed}
+  #status{display:inline-flex;align-items:center;gap:8px;margin-left:6px;font-weight:700;color:var(--text)}
+  .dot{width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,0.06)}
+  .dot.connected{background:var(--green)} .dot.error{background:var(--red)} .dot.connecting{background:var(--amber)}
+  .cols{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:18px}
+  .panel{background:var(--panel);padding:18px;border-radius:10px;border:1px solid rgba(255,255,255,0.03);min-height:240px;display:flex;flex-direction:column}
+  .panel h2{margin:0 0 8px 0;color:#cfe6ff;font-size:20px}
+  .list{flex:1;max-height:360px;overflow:auto;padding-right:6px;background:rgba(255,255,255,0.02);border-radius:8px}
+  .item{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.05)}
+  .item .name{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%}
+  .add-row{display:flex;gap:8px;margin-top:10px}
+  .small{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+  <div class="container">
+    <h1>Gestion OP / Allowlist / Banlist</h1>
+    <div id="top">
+      <label for="wsip">WebSocket :</label>
+      <input id="wsip" type="text" placeholder="ws://host:port" />
+      <button id="connectBtn">Connect</button>
+      <button id="disconnectBtn" class="secondary" disabled>Disconnect</button>
+      <div id="status"><span class="dot" id="statusDot"></span><span id="statusText">Aucune connexion</span></div>
+    </div>
+
+    <div class="cols">
+      <section class="panel">
+        <h2>OPs</h2>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+          <div class="list" id="opsList">Chargement…</div>
+          <button id="opsRefreshBtn" class="secondary">Refresh</button>
+        </div>
+        <div class="add-row">
+          <input id="opInput" type="text" placeholder="Nom ou UUID" />
+          <button id="opAddBtn">Ajouter</button>
+        </div>
+        <div class="small">Astuce : Entrée pour valider</div>
+      </section>
+
+      <section class="panel">
+        <h2>Allowlist</h2>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+          <div class="list" id="allowList">Chargement…</div>
+          <button id="allowRefreshBtn" class="secondary">Refresh</button>
+        </div>
+        <div class="add-row">
+          <input id="allowInput" type="text" placeholder="Nom ou UUID" />
+          <button id="allowAddBtn">Autoriser</button>
+        </div>
+        <div class="small">Astuce : Entrée pour valider</div>
+      </section>
+
+      <section class="panel">
+        <h2>Banlist</h2>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+          <div class="list" id="banList">Chargement…</div>
+          <button id="banRefreshBtn" class="secondary">Refresh</button>
+        </div>
+        <div class="add-row">
+          <input id="banInput" type="text" placeholder="Nom ou UUID" />
+          <button id="banAddBtn" class="danger">Bannir</button>
+        </div>
+        <div class="small">Astuce : Entrée pour valider</div>
+      </section>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+
+  const els = {
+    wsip: $('wsip'), connectBtn: $('connectBtn'), disconnectBtn: $('disconnectBtn'),
+    statusDot: $('statusDot'), statusText: $('statusText'),
+    opsList: $('opsList'), opInput: $('opInput'), opAddBtn: $('opAddBtn'), opsRefreshBtn: $('opsRefreshBtn'),
+    allowList: $('allowList'), allowInput: $('allowInput'), allowAddBtn: $('allowAddBtn'), allowRefreshBtn: $('allowRefreshBtn'),
+    banList: $('banList'), banInput: $('banInput'), banAddBtn: $('banAddBtn'), banRefreshBtn: $('banRefreshBtn'),
+  };
+
+  // LocalStorage pour l'URL
+  const LS_WS_URL = 'mc_ws_url';
+  try { const saved = localStorage.getItem(LS_WS_URL); if (saved) els.wsip.value = saved; } catch(_) {}
+
+  // logs désactivés (pas d'UI debug)
+  function logDebug(){ /* no-op */ }
+
+  let ws = null;
+  let rpcId = Math.floor(Math.random() * 1_000_000_000);
+  const nextId = () => (rpcId = (rpcId + 1) % 2_000_000_000);
+  const pending = new Map();
+
+  function setStatus(cls, txt){ els.statusDot.className = 'dot ' + (cls||''); els.statusText.textContent = txt||''; }
+  function setUiConnected(connected){ els.connectBtn.disabled = connected; els.wsip.disabled = connected; els.disconnectBtn.disabled = !connected; }
+
+  function rpc(method, params = [], timeoutMs = 10000){
+    if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.reject(new Error('WebSocket non connecté'));
+    const id = nextId();
+    const payload = { jsonrpc:"2.0", id, method, params };
+    logDebug(JSON.stringify(payload));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { pending.delete(id); reject(new Error('Timeout RPC')); }, timeoutMs);
+      pending.set(id, { resolve, reject, timer });
+      ws.send(JSON.stringify(payload));
+    });
+  }
+
+  function handleIncoming(raw){
+    let d; try { d = JSON.parse(raw); } catch { return; }
+    if (d.method && typeof d.method === 'string' && d.method.startsWith('notification:')) {
+      if (d.method.includes('allowlist')) fetchAllow();
+      if (d.method.includes('bans')) fetchBans();
+      if (d.method.includes('operators')) fetchOps();
+    }
+    if (!Object.prototype.hasOwnProperty.call(d, 'id')) return;
+    const entry = pending.get(d.id); if (!entry) return;
+    clearTimeout(entry.timer); pending.delete(d.id);
+    if (d.error){ const e = new Error(d.error.message || 'Erreur RPC'); e.code=d.error.code; e.data=d.error.data; entry.reject(e); }
+    else entry.resolve(d.result);
+  }
+
+  // Utils
+  const keyOf = (type, x) => {
+    if (type === 'bans') return x?.player?.id || x?.player?.name || x?.id || x?.name;
+    if (type === 'operators') return x?.player?.id || x?.player?.name || x?.id || x?.name;
+    return x?.id || x?.name;
+  };
+  const typeFromRemoveMethod = m => m.includes('bans') ? 'bans' : m.includes('operators') ? 'operators' : 'allowlist';
+  const listMethodFor = m => m.startsWith('minecraft:bans') ? 'minecraft:bans' : m.startsWith('minecraft:operators') ? 'minecraft:operators' : 'minecraft:allowlist';
+
+  function addObjFor(method, name){
+    if (method.startsWith('minecraft:bans')) return { player: { name }, reason: 'Banned by UI' };
+    if (method.startsWith('minecraft:operators')) return { player: { name } };
+    return { name };
+  }
+
+  function removeCandidates(method, entryRaw, name){
+    const type = typeFromRemoveMethod(method);
+    const pid = entryRaw?.player?.id;
+    const eid = entryRaw?.id;
+    if (type === 'bans')      return [ entryRaw, { player:{ id: pid } }, { player:{ name } }, { id: pid }, { name } ].filter(Boolean);
+    if (type === 'operators') return [ { player:{ id: pid } }, { player:{ name } }, { id: pid }, { name } ].filter(Boolean);
+    return [ { id: eid }, { name } ].filter(Boolean);
+  }
+
+  async function removeWithRetries(removeMethod, entryRaw, name){
+    const type = typeFromRemoveMethod(removeMethod);
+    const key = keyOf(type, entryRaw) || name;
+    const variants = removeCandidates(removeMethod, entryRaw, name);
+    let lastErr = null;
+    for (const payload of variants){
+      try {
+        await rpc(removeMethod, [[payload]]);
+        const list = await rpc(listMethodFor(removeMethod), []);
+        const present = Array.isArray(list) && list.some(it => keyOf(type, it) === key);
+        if (!present) return;
+      } catch (e){ lastErr = e; }
+    }
+    throw lastErr || new Error('Suppression non appliquée par le serveur');
+  }
+
+  function nameOf(entry){
+    return (typeof entry === 'string') ? entry :
+      entry?.player?.name || entry?.name || entry?.user || entry?.username || entry?.uuid || JSON.stringify(entry);
+  }
+
+  function renderList(container, items, removeLabel, removeMethod){
+    if (!Array.isArray(items)) { try { const p = JSON.parse(items); if (Array.isArray(p)) items = p; } catch {} }
+    if (!Array.isArray(items) || items.length === 0){
+      container.innerHTML = '<div class="item"><span class="name small">Aucun élément</span></div>'; return;
+    }
+    container.innerHTML = '';
+    items.forEach(entryRaw => {
+      const name = nameOf(entryRaw);
+      const row = document.createElement('div'); row.className='item';
+      const span = document.createElement('span'); span.className='name'; span.textContent = name;
+      const btn = document.createElement('button'); btn.className='secondary'; btn.textContent = removeLabel;
+      btn.onclick = async () => {
+        btn.disabled = true;
+        try {
+          await removeWithRetries(removeMethod, entryRaw, name);
+          if (removeMethod.startsWith('minecraft:operators')) fetchOps();
+          else if (removeMethod.startsWith('minecraft:allowlist')) fetchAllow();
+          else if (removeMethod.startsWith('minecraft:bans')) fetchBans();
+        } catch(e){ alert('Erreur remove: ' + (e.data || e.message)); }
+        finally { btn.disabled = false; }
+      };
+      row.appendChild(span); row.appendChild(btn); container.appendChild(row);
+    });
+  }
+
+  async function fetchOps(){ try { renderList(els.opsList, await rpc('minecraft:operators', []), 'Retirer', 'minecraft:operators/remove'); } catch(e){ els.opsList.textContent='Erreur: '+(e.data||e.message); } }
+  async function fetchAllow(){ try { renderList(els.allowList, await rpc('minecraft:allowlist', []), 'Retirer', 'minecraft:allowlist/remove'); } catch(e){ els.allowList.textContent='Erreur: '+(e.data||e.message); } }
+  async function fetchBans(){ try { renderList(els.banList, await rpc('minecraft:bans', []), 'Déban', 'minecraft:bans/remove'); } catch(e){ els.banList.textContent='Erreur: '+(e.data||e.message); } }
+  async function refreshAll(){ await fetchOps(); await fetchAllow(); await fetchBans(); }
+
+  function connect(){
+    const url = (els.wsip.value || '').trim();
+    if (!url) return alert('Entrez une URL WebSocket (ex: ws://host:port)');
+    try { localStorage.setItem(LS_WS_URL, url); } catch(_) {}
+    setStatus('connecting','Connexion…'); setUiConnected(true);
+    ws = new WebSocket(url);
+    ws.onopen = () => { setStatus('connected','Connecté'); refreshAll(); };
+    ws.onmessage = e => handleIncoming(e.data);
+    ws.onerror = () => { setStatus('error','Erreur'); };
+    ws.onclose = () => {
+      setStatus('', 'Déconnecté'); setUiConnected(false);
+      for (const [id, p] of pending){ clearTimeout(p.timer); p.reject(new Error('Connexion fermée')); } pending.clear();
+    };
+  }
+  function disconnect(){ if (ws && (ws.readyState===WebSocket.OPEN || ws.readyState===WebSocket.CONNECTING)) ws.close(); }
+
+  els.connectBtn.onclick = connect; els.disconnectBtn.onclick = disconnect;
+  els.opsRefreshBtn.onclick = refreshAll; els.allowRefreshBtn.onclick = refreshAll; els.banRefreshBtn.onclick = refreshAll;
+
+  els.opAddBtn.onclick = async () => {
+    const name = (els.opInput.value||'').trim(); if (!name) return;
+    try { await rpc('minecraft:operators/add', [[ addObjFor('minecraft:operators/add', name) ]]); els.opInput.value=''; await fetchOps(); }
+    catch(e){ alert('Erreur add OP: ' + (e.data || e.message)); }
+  };
+  els.allowAddBtn.onclick = async () => {
+    const name = (els.allowInput.value||'').trim(); if (!name) return;
+    try { await rpc('minecraft:allowlist/add', [[ addObjFor('minecraft:allowlist/add', name) ]]); els.allowInput.value=''; await fetchAllow(); }
+    catch(e){ alert('Erreur allow: ' + (e.data || e.message)); }
+  };
+  els.banAddBtn.onclick = async () => {
+    const name = (els.banInput.value||'').trim(); if (!name) return;
+    try { await rpc('minecraft:bans/add', [[ addObjFor('minecraft:bans/add', name) ]]); els.banInput.value=''; await fetchBans(); }
+    catch(e){ alert('Erreur ban: ' + (e.data || e.message)); }
+  };
+
+  [els.opInput, els.allowInput, els.banInput].forEach((input,i)=>{
+    input.addEventListener('keydown',e=>{ if(e.key==='Enter') [els.opAddBtn,els.allowAddBtn,els.banAddBtn][i].click(); });
+  });
+})();
+</script>
+</body>
+</html>

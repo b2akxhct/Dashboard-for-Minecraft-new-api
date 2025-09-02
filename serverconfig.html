@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Minecraft — Configuration du serveur</title>
+<style>
+  :root{
+    --bg:#0f1720; --panel:#0b1220; --muted:#94a3b8; --accent:#3182ce; --accent-2:#2563eb;
+    --card:#0b1225; --green:#10b981; --red:#ef4444; --amber:#f59e0b; --text:#e6eef8;
+  }
+  html,body{height:100%;margin:0;font-family:Inter,"Segoe UI",Arial,sans-serif;background:linear-gradient(180deg,#071019 0%,var(--bg) 100%);color:var(--text)}
+  .container{max-width:1200px;margin:28px auto;padding:28px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));border-radius:12px;box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+  h1{margin:0 0 18px 0;font-size:32px}
+  #top{display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+  label{color:var(--muted);min-width:90px}
+  input[type="text"], input[type="number"], select, textarea{
+    background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text);
+    padding:10px 12px;border-radius:8px;min-width:220px
+  }
+  textarea{min-height:88px;width:100%;resize:vertical}
+  button{background:var(--accent);color:#fff;padding:8px 12px;border-radius:8px;border:none;cursor:pointer}
+  button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--text)}
+  button.danger{background:var(--red)}
+  button.ghost{background:transparent;color:var(--muted)}
+  button:disabled{opacity:0.5;cursor:not-allowed}
+  #status{display:inline-flex;align-items:center;gap:8px;margin-left:6px;font-weight:700;color:var(--text)}
+  .dot{width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,0.06)}
+  .dot.connected{background:var(--green)} .dot.error{background:var(--red)} .dot.connecting{background:var(--amber)}
+
+  .grid{display:grid;gap:18px}
+  .cols-2{grid-template-columns:repeat(2,1fr)}
+  .cols-3{grid-template-columns:repeat(3,1fr)}
+  .panel{background:var(--panel);padding:18px;border-radius:10px;border:1px solid rgba(255,255,255,0.03);display:flex;flex-direction:column;gap:12px}
+  .panel h2{margin:0;color:#cfe6ff;font-size:20px}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .kvs{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+  .kvs .key{font-weight:600}
+  .right{margin-left:auto}
+  .hint{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+  <div class="container">
+    <h1>Configuration du serveur</h1>
+
+    <div id="top">
+      <label for="wsip">WebSocket :</label>
+      <input id="wsip" type="text" placeholder="ws://host:port" />
+      <button id="connectBtn">Connect</button>
+      <button id="disconnectBtn" class="secondary" disabled>Disconnect</button>
+      <div id="status"><span class="dot" id="statusDot"></span><span id="statusText">Aucune connexion</span></div>
+      <button id="refreshAllBtn" class="ghost">Rafraîchir</button>
+    </div>
+
+    <div class="grid cols-3">
+      <!-- État serveur -->
+      <section class="panel">
+        <h2>État du serveur</h2>
+        <div class="kvs">
+          <div class="key">Version</div><div id="svVersion" class="muted">—</div>
+          <div class="key">Démarré</div><div id="svStarted" class="muted">—</div>
+          <div class="key">Joueurs</div><div id="svPlayers" class="muted">—</div>
+        </div>
+        <div class="row">
+          <button id="saveSoft">Sauvegarder</button>
+          <button id="saveFlush" class="secondary">Sauvegarde + flush</button>
+          <button id="stopServer" class="danger right">Arrêter le serveur</button>
+        </div>
+        <div>
+          <label for="sysMsg" class="muted">Message système</label>
+          <textarea id="sysMsg" placeholder="Envoyer un message à tout le serveur"></textarea>
+          <div class="row">
+            <label style="display:inline-flex;align-items:center;gap:8px;"><input type="checkbox" id="sysOverlay"> Overlay</label>
+            <button id="sendSysMsg">Envoyer</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Toggles -->
+      <section class="panel">
+        <h2>Paramètres — interrupteurs</h2>
+        <div class="grid">
+          <div class="row">
+            <label style="display:inline-flex;align-items:center;gap:8px;"><input type="checkbox" id="autosave"> Autosave</label>
+            <label style="display:inline-flex;align-items:center;gap:8px;"><input type="checkbox" id="use_allowlist"> Allowlist activée</label>
+            <label style="display:inline-flex;align-items:center;gap:8px;"><input type="checkbox" id="enforce_allowlist"> Enforcement allowlist</label>
+          </div>
+          <div class="row">
+            <label style="display:inline-flex;align-items:center;gap:8px;"><input type="checkbox" id="allow_flight"> Autoriser le vol</label>
+            <label style="display:inline-flex;align-items:center;gap:8px;"><input type="checkbox" id="force_game_mode"> Forcer mode par défaut</label>
+            <label style="display:inline-flex;align-items:center;gap:8px;"><input type="checkbox" id="accept_transfers"> Accepter transferts</label>
+          </div>
+          <div class="row">
+            <label style="display:inline-flex;align-items:center;gap:8px;"><input type="checkbox" id="hide_online_players"> Cacher joueurs en ligne</label>
+            <label style="display:inline-flex;align-items:center;gap:8px;"><input type="checkbox" id="status_replies"> Réponses de statut</label>
+          </div>
+          <div class="row">
+            <button id="saveToggles">Enregistrer</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sélections / texte -->
+      <section class="panel">
+        <h2>Paramètres — sélection & texte</h2>
+        <div class="row">
+          <label> Difficulté </label>
+          <select id="difficulty">
+            <option value="peaceful">peaceful</option>
+            <option value="easy">easy</option>
+            <option value="normal">normal</option>
+            <option value="hard">hard</option>
+          </select>
+          <label class="right"> Mode de jeu </label>
+          <select id="game_mode">
+            <option value="survival">survival</option>
+            <option value="creative">creative</option>
+            <option value="adventure">adventure</option>
+            <option value="spectator">spectator</option>
+          </select>
+        </div>
+        <div>
+          <label for="motd" class="muted">MOTD</label>
+          <input id="motd" type="text" placeholder="Message of the day" style="width:100%">
+        </div>
+        <div class="row">
+          <button id="saveSelects">Enregistrer</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="grid cols-3" style="margin-top:18px;">
+      <!-- Nombres -->
+      <section class="panel" style="grid-column: span 3;">
+        <h2>Paramètres — numériques</h2>
+        <div class="grid cols-3">
+          <div class="row"><label>Max joueurs</label><input id="max_players" type="number" min="1" step="1"></div>
+          <div class="row"><label>Kick inactivité (s)</label><input id="player_idle_timeout" type="number" min="0" step="1"></div>
+          <div class="row"><label>Pause si vide (s)</label><input id="pause_when_empty_seconds" type="number" min="0" step="1"></div>
+          <div class="row"><label>View distance</label><input id="view_distance" type="number" min="2" step="1"></div>
+          <div class="row"><label>Simulation distance</label><input id="simulation_distance" type="number" min="2" step="1"></div>
+          <div class="row"><label>Spawn protect (rayon)</label><input id="spawn_protection_radius" type="number" min="0" step="1"></div>
+          <div class="row"><label>Entity broadcast %</label><input id="entity_broadcast_range" type="number" min="0" max="1000" step="1"></div>
+          <div class="row"><label>Heartbeat statut (s)</label><input id="status_heartbeat_interval" type="number" min="1" step="1"></div>
+          <div class="row"><label>Niveau permissions OP</label><input id="operator_user_permission_level" type="number" min="1" max="4" step="1"></div>
+        </div>
+        <div class="row">
+          <button id="saveNumbers">Enregistrer</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+
+  // ---- LocalStorage WS URL + auto-connexion ----
+  const LS_WS_URL = 'mc_ws_url';
+  try { const saved = localStorage.getItem(LS_WS_URL); if (saved) $('wsip').value = saved; } catch(_) {}
+
+  // ---- No-op logger (debug supprimé) ----
+  function logDebug(){}
+
+  // ---- WS / RPC ----
+  let ws = null;
+  let rpcId = Math.floor(Math.random()*1e9);
+  const nextId = () => (rpcId = (rpcId + 1) % 2_000_000_000);
+  const pending = new Map();
+  let lastPlayers = []; // cache joueurs pour system_message
+
+  function setStatus(cls, txt){ $('statusDot').className = 'dot ' + (cls||''); $('statusText').textContent = txt||''; }
+  function setUiConnected(connected){ $('connectBtn').disabled = connected; $('wsip').disabled = connected; $('disconnectBtn').disabled = !connected; }
+
+  function rpc(method, params = [], timeoutMs = 12000){
+    if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.reject(new Error('WebSocket non connecté'));
+    const id = nextId();
+    const payload = { jsonrpc:"2.0", id, method, params };
+    logDebug('➡️ ' + JSON.stringify(payload));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(()=>{ pending.delete(id); reject(new Error('Timeout RPC')); }, timeoutMs);
+      pending.set(id, {resolve,reject,timer});
+      ws.send(JSON.stringify(payload));
+    });
+  }
+
+  function handleIncoming(raw){
+    logDebug('⬅️ ' + raw);
+    let d; try { d = JSON.parse(raw); } catch { return; }
+    if (d.method && typeof d.method === 'string' && d.method.startsWith('notification:')) {
+      performRefreshAll(); return;
+    }
+    if (!Object.prototype.hasOwnProperty.call(d,'id')) return;
+    const p = pending.get(d.id); if (!p) return;
+    clearTimeout(p.timer); pending.delete(d.id);
+    if (d.error){ const e = new Error(d.error.message||'Erreur RPC'); e.code=d.error.code; e.data=d.error.data; p.reject(e); }
+    else p.resolve(d.result);
+  }
+
+  // === Helper format params: [value] d'abord, puis value en fallback ===
+  async function sendOne(method, value){
+    try { return await rpc(method, [value]); }
+    catch (e1){
+      try { return await rpc(method, value); }
+      catch(e2){ throw e2; }
+    }
+  }
+
+  // === Envoi system_message avec variantes de payload ===
+  async function sendSystemMessageWithFallback(literal, overlay){
+    const recObj   = lastPlayers.map(p => ({ id: p.id, name: p.name }));
+    const recIds   = lastPlayers.map(p => p.id);
+    const recNames = lastPlayers.map(p => p.name);
+
+    const variants = [
+      { message:{ literal }, overlay, receivingPlayers: recObj },
+      { message:{ literal }, overlay, receivingPlayers: recIds },
+      { message:{ literal }, overlay, receivingPlayers: recNames },
+      { message:{ literal }, overlay },                         // broadcast implicite
+      { message: literal, overlay, receivingPlayers: recObj },  // message string
+      { text: literal, overlay, receivingPlayers: recObj },     // clé alternative
+      literal                                                   // valeur brute
+    ];
+
+    for (let i = 0; i < variants.length; i++){
+      const v = variants[i];
+      try {
+        const res = await sendOne('minecraft:server/system_message', v);
+        if (res !== false && res !== null && res !== undefined) return res;
+      } catch (_) { /* try next */ }
+    }
+    throw new Error('Aucune variante acceptée par le backend');
+  }
+
+  // ---- État serveur / actions ----
+  async function loadServerStatus(){
+    try{
+      const st = await rpc('minecraft:server/status', []);
+      $('svVersion').textContent = st?.version?.name || '—';
+      $('svStarted').textContent = st?.started ? 'Oui' : 'Non';
+      lastPlayers = Array.isArray(st?.players) ? st.players : [];
+      $('svPlayers').textContent = lastPlayers.length;
+    }catch(e){ $('svVersion').textContent = 'Erreur'; }
+  }
+
+  // server/save via [bool]
+  $('saveSoft').onclick  = () => sendOne('minecraft:server/save', false)
+    .catch(e=>alert('Sauvegarde: '+(e.data||e.message)));
+  $('saveFlush').onclick = () => sendOne('minecraft:server/save', true)
+    .catch(e=>alert('Sauvegarde (flush): '+(e.data||e.message)));
+
+  $('stopServer').onclick = async () => {
+    if (!confirm('Arrêter le serveur ?')) return;
+    try { await rpc('minecraft:server/stop', []); } catch(e){ alert('Arrêt: '+(e.data||e.message)); }
+  };
+
+  // system_message utilisant la fonction multi-essais
+  $('sendSysMsg').onclick = async () => {
+    const literal = ($('sysMsg').value||'').trim(); 
+    if (!literal) return;
+    const overlay = $('sysOverlay').checked;
+    try {
+      await sendSystemMessageWithFallback(literal, overlay);
+      $('sysMsg').value = '';
+      alert('Message envoyé ✔');
+    } catch (e){
+      alert('Message non délivré: ' + (e.data || e.message));
+    }
+  };
+
+  // ---- Toggles (booléens) ----
+  const toggles = [
+    {id:'autosave',               get:'minecraft:serversettings/autosave',               set:'minecraft:serversettings/autosave/set'},
+    {id:'use_allowlist',          get:'minecraft:serversettings/use_allowlist',          set:'minecraft:serversettings/use_allowlist/set'},
+    {id:'enforce_allowlist',      get:'minecraft:serversettings/enforce_allowlist',      set:'minecraft:serversettings/enforce_allowlist/set'},
+    {id:'allow_flight',           get:'minecraft:serversettings/allow_flight',           set:'minecraft:serversettings/allow_flight/set'},
+    {id:'force_game_mode',        get:'minecraft:serversettings/force_game_mode',        set:'minecraft:serversettings/force_game_mode/set'},
+    {id:'accept_transfers',       get:'minecraft:serversettings/accept_transfers',       set:'minecraft:serversettings/accept_transfers/set'},
+    {id:'hide_online_players',    get:'minecraft:serversettings/hide_online_players',    set:'minecraft:serversettings/hide_online_players/set'},
+    {id:'status_replies',         get:'minecraft:serversettings/status_replies',         set:'minecraft:serversettings/status_replies/set'},
+  ];
+  async function loadToggles(){
+    for (const t of toggles){
+      try{ const val = await rpc(t.get, []); $(t.id).checked = !!val; }catch(_){}
+    }
+  }
+  $('saveToggles').onclick = async () => {
+    try{
+      for (const t of toggles){ await sendOne(t.set, !!$(t.id).checked); }
+      alert('Toggles appliqués ✔');
+    }catch(e){ alert('Toggles: '+(e.data||e.message)); }
+  };
+
+  // ---- Sélecteurs + texte (strings) ----
+  const selects = [
+    {id:'difficulty', get:'minecraft:serversettings/difficulty', set:'minecraft:serversettings/difficulty/set'},
+    {id:'game_mode',  get:'minecraft:serversettings/game_mode',  set:'minecraft:serversettings/game_mode/set'},
+  ];
+  async function loadSelects(){
+    for (const s of selects){
+      try{ const val = await rpc(s.get, []); if ($(s.id)) $(s.id).value = String(val); }catch(_){}
+    }
+    try{
+      const msg = await rpc('minecraft:serversettings/motd', []);
+      $('motd').value = String(msg||'');
+    }catch(_){}
+  }
+  $('saveSelects').onclick = async () => {
+    try{
+      for (const s of selects){ await sendOne(s.set, String($(s.id).value)); }
+      await sendOne('minecraft:serversettings/motd/set', String($('motd').value));
+      alert('Sélections/MOTD appliqués ✔');
+    }catch(e){ alert('Sélections/MOTD: '+(e.data||e.message)); }
+  };
+
+  // ---- Nombres (numbers) ----
+  const numbers = [
+    {id:'max_players',                get:'minecraft:serversettings/max_players',                set:'minecraft:serversettings/max_players/set'},
+    {id:'player_idle_timeout',        get:'minecraft:serversettings/player_idle_timeout',        set:'minecraft:serversettings/player_idle_timeout/set'},
+    {id:'pause_when_empty_seconds',   get:'minecraft:serversettings/pause_when_empty_seconds',   set:'minecraft:serversettings/pause_when_empty_seconds/set'},
+    {id:'view_distance',              get:'minecraft:serversettings/view_distance',              set:'minecraft:serversettings/view_distance/set'},
+    {id:'simulation_distance',        get:'minecraft:serversettings/simulation_distance',        set:'minecraft:serversettings/simulation_distance/set'},
+    {id:'spawn_protection_radius',    get:'minecraft:serversettings/spawn_protection_radius',    set:'minecraft:serversettings/spawn_protection_radius/set'},
+    {id:'entity_broadcast_range',     get:'minecraft:serversettings/entity_broadcast_range',     set:'minecraft:serversettings/entity_broadcast_range/set'},
+    {id:'status_heartbeat_interval',  get:'minecraft:serversettings/status_heartbeat_interval',  set:'minecraft:serversettings/status_heartbeat_interval/set'},
+    {id:'operator_user_permission_level', get:'minecraft:serversettings/operator_user_permission_level', set:'minecraft:serversettings/operator_user_permission_level/set'},
+  ];
+  async function loadNumbers(){
+    for (const n of numbers){
+      try{ const val = await rpc(n.get, []); $(n.id).value = (val ?? ''); }catch(_){}
+    }
+  }
+  $('saveNumbers').onclick = async () => {
+    try{
+      for (const n of numbers){
+        const raw = $(n.id).value;
+        const v = raw === '' ? null : Number(raw);
+        if (v !== null && Number.isFinite(v)) await sendOne(n.set, v);
+      }
+      alert('Paramètres numériques appliqués ✔');
+    }catch(e){ alert('Numériques: '+(e.data||e.message)); }
+  };
+
+  // ---- Refresh global ----
+  async function performRefreshAll(){
+    await Promise.all([loadServerStatus(), loadToggles(), loadSelects(), loadNumbers()]);
+  }
+
+  // ---- Connexion (avec auto-connexion si URL mémorisée) ----
+  let manualDisconnect = false;
+
+  function connect(){
+    const url = ($('wsip').value||'').trim();
+    if (!url) return alert('Entrez une URL WebSocket (ex: ws://host:port)');
+    try { localStorage.setItem(LS_WS_URL, url); } catch(_) {}
+    setStatus('connecting','Connexion…'); setUiConnected(true);
+    ws = new WebSocket(url);
+    ws.onopen  = () => { setStatus('connected','Connecté'); performRefreshAll(); };
+    ws.onclose = () => {
+      setStatus('', 'Déconnecté'); setUiConnected(false);
+      // auto-reconnect soft si une URL est stockée et que la coupure n'est pas manuelle
+      const saved = localStorage.getItem(LS_WS_URL);
+      if (!manualDisconnect && saved) setTimeout(()=> { if (!$('connectBtn').disabled) connect(); }, 2000);
+      manualDisconnect = false;
+      for (const [id,p] of pending){ clearTimeout(p.timer); p.reject(new Error('Connexion fermée')); } pending.clear();
+    };
+    ws.onerror = () => { setStatus('error','Erreur'); };
+    ws.onmessage = (e) => handleIncoming(e.data);
+  }
+  function disconnect(){
+    manualDisconnect = true;
+    if (ws && (ws.readyState===WebSocket.OPEN || ws.readyState===WebSocket.CONNECTING)) ws.close();
+  }
+
+  // ---- Bind UI ----
+  $('connectBtn').onclick = connect;
+  $('disconnectBtn').onclick = disconnect;
+  $('refreshAllBtn').onclick = performRefreshAll;
+  $('wsip').addEventListener('keydown', (e)=>{ if(e.key==='Enter') $('connectBtn').click(); });
+
+  // Auto-connect au chargement si URL mémorisée
+  const savedUrl = localStorage.getItem(LS_WS_URL);
+  if (savedUrl) { $('wsip').value = savedUrl; connect(); }
+
+})();
+</script>
+</body>
+</html>

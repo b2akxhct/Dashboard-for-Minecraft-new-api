@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Minecraft Gamerules & Players</title>
+<style>
+  :root{
+    --bg:#0f1720; --panel:#0b1220; --muted:#94a3b8; --accent:#3182ce; --accent-2:#2563eb;
+    --card:#0b1225; --green:#10b981; --red:#ef4444; --amber:#f59e0b; --text:#e6eef8;
+  }
+  html,body{height:100%;margin:0;font-family:Inter, "Segoe UI", Arial, sans-serif;background:linear-gradient(180deg,#071019 0%,var(--bg) 100%);color:var(--text)}
+  .container{max-width:1100px;margin:28px auto;padding:28px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;box-shadow: 0 8px 30px rgba(2,6,23,0.6)}
+  h1{margin:0 0 18px 0;font-size:32px}
+  #top{display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+  label{color:var(--muted);min-width:90px}
+  input[type="text"]{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text);padding:10px 12px;border-radius:8px;min-width:320px}
+  button{background:var(--accent);color:#fff;padding:8px 12px;border-radius:8px;border:none;cursor:pointer}
+  button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--text)}
+  button:disabled{opacity:0.5;cursor:not-allowed}
+  #status{display:inline-flex;align-items:center;gap:8px;margin-left:6px;font-weight:700;color:var(--text)}
+  .dot{width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,0.06);box-shadow:inset 0 0 0 2px rgba(0,0,0,0.08)}
+  .dot.connected{background:var(--green)} .dot.error{background:var(--red)} .dot.connecting{background:var(--amber)}
+  #gamerules{margin-top:18px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00));padding:18px;border-radius:10px;min-height:120px;border:1px solid rgba(255,255,255,0.02)}
+  .gamerule{display:flex;align-items:center;gap:12px;padding:8px 6px;border-bottom:1px solid rgba(255,255,255,0.02)}
+  .gamerule label{width:320px;color:#cfe6ff;font-weight:700}
+  .controls{display:flex;gap:10px;align-items:center}
+  input[type="range"]{accent-color:var(--accent)}
+  #playerListContainer{
+    position:fixed;
+    right:24px;
+    top:24px;
+    width:320px;
+    max-height:520px;
+    background: rgba(11,18,32,0.95); /* fond opaque, ajuste l'alpha si nécessaire */
+    padding:0;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    overflow: hidden;
+    display:flex;
+    flex-direction:column;
+  }
+
+  #playerListContainer .header{
+    padding:12px 14px;
+    background: rgba(255,255,255,0.02);
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+  }
+
+  #playerListContainer .header h2{
+    margin:0;
+    font-size:16px;
+    color:#cfe6ff;
+  }
+
+  #playerListContainer .list {
+    padding:10px 12px;
+    overflow-y:auto;
+    flex:1 1 auto;
+    background: transparent; /* laisse le panneau parent opaque */
+  }
+
+  .player{
+    padding:8px 6px;
+    color:var(--text);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    border-bottom: 1px solid rgba(255,255,255,0.01);
+  }
+
+  .player:last-child{ border-bottom: none; }
+
+  .op{
+    color:var(--accent-2);
+    font-weight:800;
+    font-size:12px;
+    padding-left:6px;
+  }
+
+  @media(max-width:820px){ .gamerule label{width:180px} input[type="text"]{min-width:180px} }
+</style>
+</head>
+<body>
+  <div class="container">
+    <h1>Minecraft Gamerules</h1>
+
+    <div id="top">
+      <label for="wsip">WebSocket IP :</label>
+      <input id="wsip" type="text" placeholder="ws://host:port" />
+      <div class="toolbar">
+        <button id="connectBtn">Connect</button>
+        <button id="disconnectBtn" class="secondary" disabled>Disconnect</button>
+      </div>
+      <div id="status"><span class="dot" id="statusDot"></span><span id="statusText">Aucune connexion</span></div>
+    </div>
+
+    <div id="gamerules">Chargement des gamerules...</div>
+  </div>
+
+  <div id="playerListContainer">
+    <div class="header">
+      <h2>Joueurs connectés</h2>
+    </div>
+    <div id="players" class="list small">Aucun joueur connecté</div>
+  </div>
+
+<script>
+/* merged: backup logic + dark layout
+   - simple JSON-RPC sends (Date.now ids)
+   - same parsing/notifications as gamerules_backup
+   - auto-connect if localStorage wsip exists
+*/
+
+let ws = null;
+let players = [];
+let ops = [];
+
+const wsipInput = document.getElementById('wsip');
+const connectBtn = document.getElementById('connectBtn');
+const disconnectBtn = document.getElementById('disconnectBtn');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const gamerulesDiv = document.getElementById('gamerules');
+const playersDiv = document.getElementById('players');
+
+function setStatusClass(text, cls){
+  statusText.textContent = text;
+  statusDot.className = 'dot ' + (cls||'');
+}
+
+/* --- auto-connect if saved --- */
+window.addEventListener('DOMContentLoaded', () => {
+  const ip = localStorage.getItem('wsip');
+  if (ip) {
+    wsipInput.value = ip;
+    connect(); // same behavior as backup: auto connect if saved
+  } else {
+    gamerulesDiv.textContent = 'Entrez une IP et cliquez Connect.';
+    setStatusClass('Prêt', '');
+  }
+});
+
+/* --- UI / rendering (from backup) --- */
+function createGameruleElement(rule) {
+    const div = document.createElement('div');
+    div.className = 'gamerule';
+
+    const label = document.createElement('label');
+    label.textContent = rule.key || rule.name || rule.id || 'unknown';
+    div.appendChild(label);
+
+    const controlsDiv = document.createElement('div');
+    controlsDiv.className = 'controls';
+
+    // treat boolean vs numeric
+    const isBool = (rule.type === 'boolean') || (String(rule.value) === 'true' || String(rule.value) === 'false');
+    if (isBool) {
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = (String(rule.value) === 'true' || rule.value === true);
+        checkbox.onchange = () => updateGamerule(label.textContent, checkbox.checked ? 'true' : 'false');
+        controlsDiv.appendChild(checkbox);
+    } else {
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        slider.min = '0';
+        slider.max = '10000';
+        slider.value = rule.value !== undefined ? rule.value : 0;
+        const numberInput = document.createElement('input');
+        numberInput.type = 'number';
+        numberInput.value = rule.value !== undefined ? rule.value : 0;
+        numberInput.style.width = '90px';
+
+        slider.oninput = () => { numberInput.value = slider.value; };
+        slider.onchange = () => updateGamerule(label.textContent, slider.value);
+        numberInput.onchange = () => { slider.value = numberInput.value; updateGamerule(label.textContent, numberInput.value); };
+
+        controlsDiv.appendChild(slider);
+        controlsDiv.appendChild(numberInput);
+    }
+
+    div.appendChild(controlsDiv);
+    return div;
+}
+
+function renderGamerules(list) {
+    gamerulesDiv.innerHTML = '';
+    if (!list || list.length === 0) {
+        gamerulesDiv.textContent = 'Aucune gamerule trouvée.';
+        return;
+    }
+    const rules = list;
+    rules.forEach(rule => {
+        gamerulesDiv.appendChild(createGameruleElement(rule));
+    });
+}
+
+/* --- players UI --- */
+function updatePlayerDisplay() {
+    playersDiv.innerHTML = "";
+    if (!players || players.length === 0) {
+        playersDiv.textContent = "Aucun joueur connecté";
+        return;
+    }
+    players.forEach(p => {
+        const div = document.createElement("div");
+        div.className = "player";
+        const isOp = ops.some(o => {
+            // ops may be { player: {...} } or direct { id... }
+            if (!o) return false;
+            const opPlayer = o.player || o;
+            const pid = p.id || p.uuid;
+            if (!pid) return false;
+            return (opPlayer.id && opPlayer.id === pid) || (opPlayer.uuid && opPlayer.uuid === pid);
+        });
+        const name = p.name || p.username || (p.player && p.player.name) || 'unknown';
+        div.innerHTML = `${name}${isOp ? '<span class="op"> ●</span>' : ''}`;
+        playersDiv.appendChild(div);
+    });
+}
+
+/* --- requests --- */
+function fetchGamerules() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method: "minecraft:gamerules", params: [] }));
+}
+
+function updateGamerule(key, value) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({
+        jsonrpc: "2.0",
+        id: Date.now(),
+        method: "minecraft:gamerules/update",
+        params: [{ key: key, value: value }]
+    }));
+    setTimeout(fetchGamerules, 200);
+}
+
+function fetchPlayers() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ jsonrpc:"2.0", id: Date.now(), method:"minecraft:players", params:[] }));
+    ws.send(JSON.stringify({ jsonrpc:"2.0", id: Date.now()+1, method:"minecraft:operators", params:[] }));
+}
+
+/* --- notifications --- */
+function handleNotification(data) {
+    if (!data || !data.method) return;
+    switch(data.method) {
+        case "notification:players/joined":
+        case "notification:players/left":
+            fetchPlayers();
+            break;
+        case "notification:operators/added":
+            if (data.params && data.params.player) ops.push(data.params.player);
+            updatePlayerDisplay();
+            break;
+        case "notification:operators/removed":
+            if (data.params && data.params.player && data.params.player.player) {
+                const playerId = data.params.player.player.id;
+                ops = ops.filter(o => {
+                    const p = o.player || o;
+                    return p && p.id !== playerId;
+                });
+            }
+            updatePlayerDisplay();
+            break;
+        default:
+            // generic: if method contains keywords
+            const m = (data.method || '').toLowerCase();
+            if (m.includes('player')) fetchPlayers();
+            if (m.includes('gamerule')) fetchGamerules();
+            break;
+    }
+}
+
+/* --- connect / message handling --- */
+function connect() {
+    const ip = wsipInput.value.trim();
+    if (!ip) return alert("Entrez une IP WebSocket !");
+    try {
+        setStatusClass('Connexion en cours...', 'connecting');
+        connectBtn.disabled = true;
+        disconnectBtn.disabled = false;
+        ws = new WebSocket(ip);
+    } catch (e) {
+        setStatusClass('URL invalide', 'error');
+        connectBtn.disabled = false;
+        return;
+    }
+
+    ws.onopen = () => {
+        setStatusClass('✅ Connecté', 'connected');
+        localStorage.setItem('wsip', ip);
+        fetchGamerules();
+        fetchPlayers();
+    };
+
+    ws.onmessage = (msg) => {
+        let data;
+        try { data = JSON.parse(msg.data); }
+        catch (e) { console.warn('Message non-JSON', msg.data); return; }
+
+        // 1) notifications
+        if (data.method && data.params) {
+            handleNotification(data);
+            return;
+        }
+
+        // 2) typical result shapes
+        const r = data.result;
+        if (!r) {
+            console.debug('WS message without result/method:', data);
+            return;
+        }
+
+        // array direct results: players / gamerules / ops
+        if (Array.isArray(r)) {
+            if (r.length && r[0] && r[0].name) { players = r; updatePlayerDisplay(); return; }
+            if (r.length && r[0] && r[0].player) { ops = r; updatePlayerDisplay(); return; }
+            if (r.length && r[0] && (r[0].key || r[0].name)) { renderGamerules(r); return; }
+        }
+
+        // object shapes: { players: [... ] } or { gamerules: [...] } or { operators: [...] }
+        if (r.players && Array.isArray(r.players)) { players = r.players; updatePlayerDisplay(); return; }
+        if (r.gamerules && Array.isArray(r.gamerules)) { renderGamerules(r.gamerules); return; }
+        if (r.operators && Array.isArray(r.operators)) { ops = r.operators; updatePlayerDisplay(); return; }
+
+        // some servers return { playersList: [...] } or nested shapes
+        if (r.playersList && Array.isArray(r.playersList)) { players = r.playersList; updatePlayerDisplay(); return; }
+
+        // fallback: log unknown result to console for inspection
+        console.debug('WS result shape not recognized, inspect:', r);
+    };
+
+    ws.onerror = () => {
+        setStatusClass('❌ Erreur de connexion', 'error');
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = false;
+    };
+
+    ws.onclose = () => {
+        setStatusClass('❌ Déconnecté', 'error');
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+    };
+}
+
+function disconnect(){
+  if (ws){
+    try { ws.close(); } catch(e){}
+    ws = null;
+  }
+  setStatusClass('Déconnecté','');
+  connectBtn.disabled = false;
+  disconnectBtn.disabled = true;
+}
+
+connectBtn.addEventListener('click', connect);
+disconnectBtn.addEventListener('click', disconnect);
+
+// expose helpers for debug
+window.__mc = { connect, disconnect, fetchGamerules, fetchPlayers };
+</script>
+</body>
+</html>
