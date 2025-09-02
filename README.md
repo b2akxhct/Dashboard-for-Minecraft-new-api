@@ -1,2 +1,3 @@
-Ceci est un "dashboard" qui vous permet de gérer plusieurs aspect de votre serveur minecraft.
-Attention de bien activer le management-server-enabled=true
+Ceci est un *dashboard* qui vous permet de gérer plusieurs aspects de votre serveur Minecraft.  
+⚠️ **Attention :** activez `management-server-enabled=true` dans `server.properties`.  
+Le fichier `index.html` est le fichier principal.  
