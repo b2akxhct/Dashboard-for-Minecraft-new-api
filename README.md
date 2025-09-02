@@ -1,1 +1,2 @@
-This is a little dashboard created for test the new api added by Mojang in Minecraft 25w35a 
+Ceci est un "dashboard" qui vous permet de gérer plusieurs aspect de votre serveur minecraft.
+Attention de bien activer le management-server-enabled=true
